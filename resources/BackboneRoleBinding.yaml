@@ -1,0 +1,34 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: backbonerolebindings.iam-backbone.org
+spec:
+  group: iam-backbone.org
+  names:
+    kind: BackboneRoleBinding
+    listKind: BackboneRoleBindingList
+    plural: backbonerolebindings
+    singular: backbonerolebinding
+    shortNames:
+      - bbrolebinding
+      - bbrolebindings
+      - bbrb
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                userRef:
+                  type: string
+                roleRef:
+                  type: string
+              required:
+                - userRef
+                - roleRef

@@ -1,0 +1,11 @@
+apiVersion: iam-backbone.org/v1
+kind: BackboneUser
+metadata:
+  name: admin-user
+  labels:
+    email: omri__at__gopher.com
+spec:
+  email: omri@gopher.com
+  firstName: Omri
+  lastName: Gopher
+  secretRef: admin-secret

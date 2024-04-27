@@ -1,0 +1,7 @@
+apiVersion: iam-backbone.org/v1
+kind: BackboneRoleBinding
+metadata:
+  name: admin-user-role-binding
+spec:
+  userRef: admin-user
+  roleRef: admin-role

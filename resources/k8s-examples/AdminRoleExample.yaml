@@ -1,0 +1,8 @@
+apiVersion: iam-backbone.org/v1
+kind: BackboneRole
+metadata:
+  name: admin-role
+spec:
+  roleName: admin
+  permissions:
+    - "ALL"

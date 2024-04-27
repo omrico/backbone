@@ -1,0 +1,40 @@
+# Compiled Object files, Static and Dynamic libs (Shared Objects)
+*.o
+*.a
+
+# Compiled Go packages
+*.exe
+*.test
+*.prof
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below if you use a tool that manages dependencies outside of `go mod`)
+# /vendor/
+# /Godeps/
+
+# Output directory
+/bin/
+
+# IDE/Editor specific files
+.vscode/
+.idea/
+
+# Compiled files
+*.compiled
+
+# Temporary files
+*.tmp
+
+# Environment files
+.env
+
+# Binary files
+*.bin
+
+# macOS
+.DS_Store
+
+# go
+vendor
