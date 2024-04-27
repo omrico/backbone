@@ -1,3 +1,5 @@
+![Backbone logo](./assets/Backbone-logo.svg)
+
 # Backbone - Lightweight AuthZ, AuthN and IdP for K8s apps
 
 A super simple, easy to use, Kubernetes native, identity and access management backbone for POCs, demos, student
