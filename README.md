@@ -10,8 +10,8 @@ Due to these facts, it is not recommended to create more than 1 replica or to cr
 | Feature                                        | Supported? | When?       |
 |------------------------------------------------|------------|-------------|
 | Act as a simple Sessions server (cookie based) | V          | In Progress |
-| Act as an OpenID Connect server (with OAuth)   | V          | In Progress |
-| Act as a broker to other IdPs via OIDC         | V          | In Progress |
+| Act as an OpenID Connect server (with OAuth)   | V          | TBD         |
+| Act as a broker to other IdPs via OIDC         | V          | TBD         |
 | SAML                                           | X          | Not planned |
-| User Roles                                     | V          | In Progress | 
-| Permissions                                    | V          | In Progress |
+| User Roles                                     | V          | TBD         | 
+| Permissions                                    | V          | TBD         |
