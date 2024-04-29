@@ -1,4 +1,4 @@
-![Backbone logo](./assets/Backbone-logo.svg)
+![Backbone logo](./assets/Backbone-logo-250x250.png)
 
 # Backbone - Lightweight AuthZ, AuthN and IdP for K8s apps
 
