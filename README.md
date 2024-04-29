@@ -13,5 +13,5 @@ Due to these facts, it is not recommended to create more than 1 replica or to cr
 | Act as an OpenID Connect server (with OAuth)   | V          | TBD         |
 | Act as a broker to other IdPs via OIDC         | V          | TBD         |
 | SAML                                           | X          | Not planned |
-| User Roles                                     | V          | TBD         | 
-| Permissions                                    | V          | TBD         |
+| User Roles                                     | V          | In progress | 
+| Permissions                                    | V          | In progress |
