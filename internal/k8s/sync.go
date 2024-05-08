@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/omrico/backbone/internal/config"
@@ -29,17 +30,18 @@ type Client struct {
 	Cfg             *config.Config
 }
 
-func (client *Client) StartSync() {
+func (c *Client) StartSync(wg *sync.WaitGroup) {
+	wg.Wait()
 	logger := misc.GetLogger()
-	ticker := time.NewTicker(time.Second * time.Duration(client.Cfg.SyncInterval))
+	logger.Infof("config ready, starting k8s sync client. refresh will happen every %d seconds", c.Cfg.SyncInterval)
+	ticker := time.NewTicker(time.Second * time.Duration(c.Cfg.SyncInterval))
 	quit := make(chan struct{})
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
-				logger.Info("Reading data from k8s...")
-				client.ReadDataFromK8s()
-				logger.Info("Reading data from k8s... done")
+				logger.Info("reading data from k8s...")
+				c.ReadDataFromK8s()
 			case <-quit:
 				ticker.Stop()
 				return
@@ -48,14 +50,14 @@ func (client *Client) StartSync() {
 	}()
 }
 
-func (client *Client) ReadDataFromK8s() {
+func (c *Client) NewClient() {
 	logger := misc.GetLogger()
-	kubeconfig := client.Cfg.KubeConfig
+	kubeconfig := c.Cfg.KubeConfig
 	var restconfig *rest.Config
 	var dynamicClient *dynamic.DynamicClient
 	var err error
 
-	if client.k8sDynClient == nil {
+	if c.k8sDynClient == nil {
 		if kubeconfig != "" {
 			logger.Info("KUBECONFIG set, assuming not in cluster mode")
 
@@ -81,8 +83,14 @@ func (client *Client) ReadDataFromK8s() {
 			os.Exit(1)
 		}
 
-		client.k8sDynClient = dynamicClient
+		c.k8sDynClient = dynamicClient
 	}
+}
+
+func (client *Client) ReadDataFromK8s() {
+	logger := misc.GetLogger()
+
+	var err error
 
 	// build user map
 	crs, err := getCRsForGroupKind("iam-backbone.org", "backboneuser", client.k8sDynClient)
@@ -246,4 +254,64 @@ func (client *Client) GetUserRoles(email string) ([]RoleResource, error) {
 		return []RoleResource{}, errors.New("user not found")
 	}
 	return roles, nil
+}
+
+func (c *Client) ConfigWithWatcher(gcfg *config.Config, wg *sync.WaitGroup) {
+	logger := misc.GetLogger()
+	logger.Info("starting watcher - read config CR")
+	resource := schema.GroupVersionResource{
+		Group:    "iam-backbone.org",
+		Version:  "v1",
+		Resource: "backboneconfigs",
+	}
+	watcher, err := c.k8sDynClient.Resource(resource).Namespace("default").Watch(context.Background(), v1.ListOptions{})
+	if err != nil {
+		logger.Warnf("Error watching CRs: %v\n", err)
+		return
+	}
+	firstRun := true
+
+	// Define a function to handle events
+	eventHandler := func(obj interface{}) {
+		// Convert the event object to a CR
+		cr, ok := obj.(*unstructured.Unstructured)
+		if !ok {
+			logger.Info("error converting CR")
+			return
+		}
+
+		specData, _ := json.Marshal(cr.Object["spec"])
+		var cfg ConfigResource
+		_ = json.Unmarshal(specData, &cfg)
+
+		gcfg.Mode = cfg.Mode
+		gcfg.SyncInterval = cfg.SyncIntervalSeconds
+
+		// TODO - resolve the key ref and get the actual secret
+		gcfg.CookieStoreKey = cfg.CookieStoreKeyRef
+
+		// signal that the config is ready on boot
+		if firstRun {
+			firstRun = false
+			wg.Done()
+		}
+	}
+
+	// Start watching for events
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	go func() {
+		for {
+			select {
+			case event, ok := <-watcher.ResultChan():
+				if !ok {
+					logger.Info("Watcher channel closed")
+					return
+				}
+				logger.Infof("event received: %+v", event)
+				eventHandler(event.Object)
+			}
+		}
+	}()
 }

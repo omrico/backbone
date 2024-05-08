@@ -1,0 +1,36 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: backboneconfigs.iam-backbone.org
+spec:
+  group: iam-backbone.org
+  names:
+    kind: BackboneConfig
+    listKind: BackboneConfigList
+    plural: backboneconfigs
+    singular: backboneconfig
+    shortNames:
+      - bbconfig
+      - bbconfigs
+      - bbc
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                mode:
+                  type: string
+                syncIntervalSeconds:
+                  type: integer
+                cookieStoreKeyRef:
+                  type: string
+              required:
+                - mode
+
