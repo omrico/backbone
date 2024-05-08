@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"sync"
 
 	"github.com/omrico/backbone/internal/auth"
 	"github.com/omrico/backbone/internal/config"
@@ -24,11 +25,18 @@ func main() {
 	cfg := &config.Config{}
 	cfg.ReadEnv()
 
-	logger.Infof("Starting k8s sync client. Refresh will happen every %d seconds", cfg.SyncInterval)
 	c := &k8s.Client{
 		Cfg: cfg,
 	}
-	c.StartSync()
+	c.NewClient()
+
+	// use a waitgroup to prevent execution of some methods before config is ready
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	c.ConfigWithWatcher(cfg, &wg)
+
+	c.StartSync(&wg)
 
 	// middlewares and handlers
 	r := gin.Default()
@@ -44,7 +52,7 @@ func main() {
 	})
 
 	sm := sessions.SessionManager{SyncClient: c, Cfg: cfg}
-	sm.Init(r)
+	sm.Init(r, &wg)
 
 	r.GET("/main/ping", sm.SessionMiddleware(), func(c *gin.Context) {
 		userAuth, err := auth.BuildAuthFromCtx(c)

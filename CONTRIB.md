@@ -47,19 +47,41 @@ brew install kind
 kind create cluster
 ```
 
-### Start the Backbone server (in cookie sessions mode)
-
-```
-KUBECONFIG=/path/to/.kube/config SYNC_INTERVAL_SECONDS=5 MODE=SESSIONS COOKIE_STORE_KEY=password go run cmd/main.go
-```
-
 ### Create resources on the server
 
 You will need to make sure your `KUBECONFIG` env var points to your kubeconfig file, usually under `~/.kube/config`.
 
-Create password object:
+Create password object for the cookie store:
 
 ```shell
+vim resources/k8s-examples/SecretExample.yaml
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: cookie-session-key
+# type: Opaque
+# data:
+#   password: cGFzc3dvcmQ=
+kubectl apply -f resources/k8s-examples/SecretExample.yaml
+```
+
+Create config:
+
+```shell
+kubectl apply -f resources/k8s-examples/ConfigExample.yaml
+```
+
+Create password object for admin user:
+
+```shell
+vim resources/k8s-examples/SecretExample.yaml
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: admin-secret
+# type: Opaque
+# data:
+#   password: Y2EkaGMwdw==
 kubectl apply -f resources/k8s-examples/SecretExample.yaml
 ```
 
@@ -80,6 +102,12 @@ Create role binding object, to attach a role to a user:
 
 ```shell
 kubectl apply -f resources/k8s-examples/RoleBindingExample.yaml
+```
+
+### Start the Backbone server (in cookie sessions mode)
+
+```
+KUBECONFIG=/path/to/.kube/config go run cmd/main.go
 ```
 
 ### Test with HTTP client like Postman

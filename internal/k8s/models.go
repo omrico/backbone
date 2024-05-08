@@ -28,3 +28,9 @@ type RoleBindingResource struct {
 type RoleResourceDto struct {
 	Roles []RoleResource `json:"roles"`
 }
+
+type ConfigResource struct {
+	Mode                string
+	SyncIntervalSeconds int
+	CookieStoreKeyRef   string
+}

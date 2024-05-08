@@ -3,6 +3,7 @@ package sessions
 import (
 	"encoding/json"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/omrico/backbone/internal/auth"
@@ -23,7 +24,8 @@ type SessionManager struct {
 	CookieStore ginsession.Store
 }
 
-func (sm *SessionManager) Init(r *gin.Engine) {
+func (sm *SessionManager) Init(r *gin.Engine, wg *sync.WaitGroup) {
+	wg.Wait()
 	// cookie store
 	sm.CookieStore = cookie.NewStore([]byte(sm.Cfg.CookieStoreKey))
 

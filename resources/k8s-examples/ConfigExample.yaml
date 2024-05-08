@@ -1,0 +1,8 @@
+apiVersion: iam-backbone.org/v1
+kind: BackboneConfig
+metadata:
+  name: config
+spec:
+  mode: sessions
+  syncIntervalSeconds: 5
+  cookieStoreKeyRef: cookie-store-key
