@@ -34,6 +34,7 @@ func (sm *SessionManager) Init(r *gin.Engine, wg *sync.WaitGroup) {
 	group := r.Group("/auth/sessions")
 	group.POST("/login", sm.LoginHandler)
 	group.GET("/userinfo", sm.SessionMiddleware(), sm.UserInfoHandler)
+	group.GET("/validate", sm.SessionMiddleware(), sm.ValidateSessionHandler)
 	group.GET("/logout", sm.LogoutHandler)
 }
 
@@ -42,10 +43,25 @@ func (sm *SessionManager) SessionMiddleware() gin.HandlerFunc {
 		session := ginsession.Default(c)
 		sessionToken := session.Get("token")
 		if sessionToken == nil {
-			bberr.MakeError(c, bberr.UserNotLoggedIn)
+			bberr.MakeError(c, bberr.UserNotLoggedInError)
 			c.Abort()
 			return
 		}
+		expValue := session.Get("exp")
+		if expValue != nil {
+			exp, ok := expValue.(int64)
+			if !ok {
+				bberr.MakeError(c, bberr.CannotExtractSessionInfoError)
+				c.Abort()
+				return
+			}
+			if exp < time.Now().UnixMilli() {
+				bberr.MakeError(c, bberr.SessionExpiredError)
+				c.Abort()
+				return
+			}
+		}
+		c.Set("exp", expValue)
 		c.Set("username", session.Get("username"))
 		c.Set("roles", session.Get("roles"))
 		c.Next()
@@ -92,10 +108,31 @@ func (sm *SessionManager) UserInfoHandler(c *gin.Context) {
 	userAuth, err := auth.BuildAuthFromCtx(c)
 	if err != nil {
 		logger.Warnf("could not get userinfo with err: %s", err.Error())
-		bberr.MakeError(c, bberr.CannotExtractSessionInfo)
+		bberr.MakeError(c, bberr.CannotExtractSessionInfoError)
 		return
 	}
 	c.JSON(http.StatusOK, userAuth)
+}
+
+func (sm *SessionManager) ValidateSessionHandler(c *gin.Context) {
+	logger := misc.GetLogger()
+
+	response := ValidateRespons{IsValid: false}
+	userAuth, err := auth.BuildAuthFromCtx(c)
+	if err != nil {
+		logger.Warnf("could not get userinfo with err: %s", err.Error())
+		response.Message = bberr.CannotExtractSessionInfoError.ErrMessage
+		c.JSON(http.StatusOK, response)
+		return
+	}
+	if userAuth.Expiration < time.Now().UnixMilli() {
+		response.Message = bberr.SessionExpiredError.ErrMessage
+		c.JSON(http.StatusOK, response)
+		return
+	}
+	response.IsValid = true
+	response.Message = "session is valid"
+	c.JSON(http.StatusOK, response)
 }
 
 // private
@@ -121,6 +158,8 @@ func (sm *SessionManager) createSession(c *gin.Context, username string) {
 		session.Set("roles", string(roleBytes))
 	}
 	session.Set("token", sessionToken)
+	timein := time.Now().Local().Add(time.Hour * time.Duration(12))
+	session.Set("exp", timein.UnixMilli())
 	err = session.Save()
 	if err != nil {
 		logger.Warnf("could not save session for user %+v, err %+v", username, err)

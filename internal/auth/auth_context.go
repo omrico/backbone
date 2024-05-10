@@ -10,6 +10,7 @@ import (
 type UserAuth struct {
 	Username      string              `json:"username"`
 	RolesAndPerms map[string][]string `json:"roles"`
+	Expiration    int64               `json:"expiration"`
 }
 
 func BuildAuthFromCtx(ctx *gin.Context) (*UserAuth, error) {
@@ -27,8 +28,11 @@ func BuildAuthFromCtx(ctx *gin.Context) (*UserAuth, error) {
 	for _, r := range rolesDTO.Roles {
 		roleAndPermsMap[r.RoleName] = r.Permissions
 	}
+	expiration := ctx.GetInt64("exp")
+
 	return &UserAuth{
 		Username:      username,
 		RolesAndPerms: roleAndPermsMap,
+		Expiration:    expiration,
 	}, nil
 }

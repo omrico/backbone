@@ -14,14 +14,14 @@ type ErrorWrapper struct {
 
 var (
 	// 01 sessions
-	UserNotLoggedIn          = newError("ERR.01.001", "user not logged in", http.StatusForbidden)
-	CannotExtractSessionInfo = newError("ERR.01.002", "cannot extract info from session", http.StatusInternalServerError)
+	UserNotLoggedInError          = newError("ERR.01.001", "user not logged in", http.StatusForbidden)
+	CannotExtractSessionInfoError = newError("ERR.01.002", "cannot extract info from session", http.StatusInternalServerError)
+	SessionExpiredError           = newError("ERR.01.003", "session expired", http.StatusUnauthorized)
 
 	// 02 oauth...
 )
 
 func MakeError(c *gin.Context, err ErrorWrapper) {
-
 	requestID := c.GetString("request-id")
 	c.JSON(err.HttpCode, buildErrorResponse(err, requestID))
 }
