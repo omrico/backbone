@@ -34,6 +34,8 @@ func (c *Client) StartSync(wg *sync.WaitGroup) {
 	wg.Wait()
 	logger := misc.GetLogger()
 	logger.Infof("config ready, starting k8s sync client. refresh will happen every %d seconds", c.Cfg.SyncInterval)
+	logger.Info("reading data from k8s... (first run)")
+	c.ReadDataFromK8s()
 	ticker := time.NewTicker(time.Second * time.Duration(c.Cfg.SyncInterval))
 	quit := make(chan struct{})
 	go func() {
