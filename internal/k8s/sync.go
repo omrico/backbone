@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -15,7 +14,6 @@ import (
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
@@ -198,7 +196,7 @@ func getCRForGroupKind(group string, kind string, crName string, dynClient *dyna
 	return cr, nil
 }
 
-func getCRForGroupKindWithLabel(group string, kind string, labelName string, labelValue string, dynClient *dynamic.DynamicClient) (*unstructured.Unstructured, error) {
+func getCRForGroupKindWithUsername(group, kind, username string, dynClient *dynamic.DynamicClient) (*unstructured.Unstructured, error) {
 	// Retrieve the resource schema for the given CRD
 	resource := schema.GroupVersionResource{
 		Group:    group,
@@ -206,18 +204,22 @@ func getCRForGroupKindWithLabel(group string, kind string, labelName string, lab
 		Resource: kind + "s", // Plural form of the kind
 	}
 
-	// Label selector to filter CRs
-	labelSelector := labels.SelectorFromSet(labels.Set{labelName: labelValue})
-
-	// Fetch the list of CRs with the specified label
-	crs, err := dynClient.Resource(resource).Namespace("default").List(context.Background(), v1.ListOptions{
-		LabelSelector: labelSelector.String(),
-	})
-
+	// // Fetch the list of CRs and filter by username
+	crs, err := dynClient.Resource(resource).Namespace("default").List(context.Background(), v1.ListOptions{})
 	if err != nil {
 		return &unstructured.Unstructured{}, err
 	}
-	return &crs.Items[0], nil
+
+	for _, cr := range crs.Items {
+		specData, _ := json.Marshal(cr.Object["spec"])
+		var spec UserResource
+		_ = json.Unmarshal(specData, &spec)
+		if spec.Email == username {
+			return &cr, nil
+		}
+	}
+
+	return &unstructured.Unstructured{}, nil
 }
 
 func (client *Client) GetUser(email string) (UserResource, error) {
@@ -230,8 +232,7 @@ func (client *Client) GetUser(email string) (UserResource, error) {
 
 func (client *Client) AssertPassword(username string, password string) bool {
 	logger := misc.GetLogger()
-	username = strings.Replace(username, "@", "__at__", 1)
-	userCR, _ := getCRForGroupKindWithLabel("iam-backbone.org", "backboneuser", "email", username, client.k8sDynClient)
+	userCR, _ := getCRForGroupKindWithUsername("iam-backbone.org", "backboneuser", username, client.k8sDynClient)
 	specData, _ := json.Marshal(userCR.Object["spec"])
 	var userWithPassword UserPasswordResource
 	_ = json.Unmarshal(specData, &userWithPassword)
