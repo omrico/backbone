@@ -306,15 +306,13 @@ func (c *Client) ConfigWithWatcher(gcfg *config.Config, wg *sync.WaitGroup) {
 
 	go func() {
 		for {
-			select {
-			case event, ok := <-watcher.ResultChan():
-				if !ok {
-					logger.Info("Watcher channel closed")
-					return
-				}
-				logger.Infof("event received: %+v", event)
-				eventHandler(event.Object)
+			event, ok := <-watcher.ResultChan()
+			if !ok {
+				logger.Info("Watcher channel closed")
+				return
 			}
+			logger.Infof("event received: %+v", event)
+			eventHandler(event.Object)
 		}
 	}()
 }
