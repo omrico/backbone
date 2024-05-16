@@ -14,6 +14,7 @@ import (
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
@@ -196,7 +197,7 @@ func getCRForGroupKind(group string, kind string, crName string, dynClient *dyna
 	return cr, nil
 }
 
-func getCRForGroupKindWithUsername(group, kind, username string, dynClient *dynamic.DynamicClient) (*unstructured.Unstructured, error) {
+func getCRForGroupKindWithLabel(group, kind, labelName, labelValue string, dynClient *dynamic.DynamicClient) (*unstructured.Unstructured, error) {
 	// Retrieve the resource schema for the given CRD
 	resource := schema.GroupVersionResource{
 		Group:    group,
@@ -204,22 +205,18 @@ func getCRForGroupKindWithUsername(group, kind, username string, dynClient *dyna
 		Resource: kind + "s", // Plural form of the kind
 	}
 
+	// Label selector to filter CRs
+	labelSelector := labels.SelectorFromSet(labels.Set{labelName: labelValue})
+
 	// // Fetch the list of CRs and filter by username
-	crs, err := dynClient.Resource(resource).Namespace("default").List(context.Background(), v1.ListOptions{})
-	if err != nil {
+	crs, err := dynClient.Resource(resource).Namespace("default").List(context.Background(), v1.ListOptions{
+		LabelSelector: labelSelector.String(),
+	})
+	if err != nil || len(crs.Items) == 0 {
 		return &unstructured.Unstructured{}, err
 	}
 
-	for _, cr := range crs.Items {
-		specData, _ := json.Marshal(cr.Object["spec"])
-		var spec UserResource
-		_ = json.Unmarshal(specData, &spec)
-		if spec.Email == username {
-			return &cr, nil
-		}
-	}
-
-	return &unstructured.Unstructured{}, nil
+	return &crs.Items[0], nil
 }
 
 func (client *Client) GetUser(email string) (UserResource, error) {
@@ -230,16 +227,30 @@ func (client *Client) GetUser(email string) (UserResource, error) {
 	return user, nil
 }
 
+func getUserWithPasswordByUsername(username string, dynClient *dynamic.DynamicClient) (UserPasswordResource, error) {
+	crs, _ := getCRsForGroupKind("iam-backbone.org", "backboneuser", dynClient)
+	for _, cr := range crs.Items {
+		specData, _ := json.Marshal(cr.Object["spec"])
+		var userWithPassword UserPasswordResource
+		_ = json.Unmarshal(specData, &userWithPassword)
+		if userWithPassword.Email == username {
+			return userWithPassword, nil
+		}
+	}
+
+	return UserPasswordResource{}, errors.New("user not found")
+}
+
 func (client *Client) AssertPassword(username string, password string) bool {
 	logger := misc.GetLogger()
-	userCR, _ := getCRForGroupKindWithUsername("iam-backbone.org", "backboneuser", username, client.k8sDynClient)
-	specData, _ := json.Marshal(userCR.Object["spec"])
-	var userWithPassword UserPasswordResource
-	_ = json.Unmarshal(specData, &userWithPassword)
+	userWithPassword, err := getUserWithPasswordByUsername(username, client.k8sDynClient)
+	if err != nil {
+		logger.Warnf("%s", err.Error())
+		return false
+	}
 
-	//
 	secretCR, _ := getCRForGroupKind("", "secret", userWithPassword.SecretRef, client.k8sDynClient)
-	specData, _ = json.Marshal(secretCR.Object["data"])
+	specData, _ := json.Marshal(secretCR.Object["data"])
 	var k8sPw SecretResource
 	_ = json.Unmarshal(specData, &k8sPw)
 
