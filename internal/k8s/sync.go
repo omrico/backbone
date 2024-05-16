@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -212,8 +213,11 @@ func getCRForGroupKindWithLabel(group, kind, labelName, labelValue string, dynCl
 	crs, err := dynClient.Resource(resource).Namespace("default").List(context.Background(), v1.ListOptions{
 		LabelSelector: labelSelector.String(),
 	})
-	if err != nil || len(crs.Items) == 0 {
-		return &unstructured.Unstructured{}, err
+	if err != nil {
+		return nil, err
+	}
+	if len(crs.Items) == 0 {
+		return nil, fmt.Errorf("no CR With label %s and value %s found", labelName, labelValue)
 	}
 
 	return &crs.Items[0], nil
