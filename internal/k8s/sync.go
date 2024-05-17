@@ -209,7 +209,7 @@ func getCRForGroupKindWithLabel(group, kind, labelName, labelValue string, dynCl
 	// Label selector to filter CRs
 	labelSelector := labels.SelectorFromSet(labels.Set{labelName: labelValue})
 
-	// // Fetch the list of CRs and filter by username
+	// Fetch the list of CRs and filter by username
 	crs, err := dynClient.Resource(resource).Namespace("default").List(context.Background(), v1.ListOptions{
 		LabelSelector: labelSelector.String(),
 	})
@@ -249,7 +249,7 @@ func (client *Client) AssertPassword(username string, password string) bool {
 	logger := misc.GetLogger()
 	userWithPassword, err := getUserWithPasswordByUsername(username, client.k8sDynClient)
 	if err != nil {
-		logger.Warnf("%s", err.Error())
+		logger.Warnf("could not get user by username: %s", err.Error())
 		return false
 	}
 
