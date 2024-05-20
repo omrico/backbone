@@ -5,8 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -198,7 +198,7 @@ func getCRForGroupKind(group string, kind string, crName string, dynClient *dyna
 	return cr, nil
 }
 
-func getCRForGroupKindWithLabel(group string, kind string, labelName string, labelValue string, dynClient *dynamic.DynamicClient) (*unstructured.Unstructured, error) {
+func getCRForGroupKindWithLabel(group, kind, labelName, labelValue string, dynClient *dynamic.DynamicClient) (*unstructured.Unstructured, error) {
 	// Retrieve the resource schema for the given CRD
 	resource := schema.GroupVersionResource{
 		Group:    group,
@@ -209,14 +209,17 @@ func getCRForGroupKindWithLabel(group string, kind string, labelName string, lab
 	// Label selector to filter CRs
 	labelSelector := labels.SelectorFromSet(labels.Set{labelName: labelValue})
 
-	// Fetch the list of CRs with the specified label
+	// Fetch the list of CRs and filter by username
 	crs, err := dynClient.Resource(resource).Namespace("default").List(context.Background(), v1.ListOptions{
 		LabelSelector: labelSelector.String(),
 	})
-
 	if err != nil {
-		return &unstructured.Unstructured{}, err
+		return nil, err
 	}
+	if len(crs.Items) == 0 {
+		return nil, fmt.Errorf("no CR With label %s and value %s found", labelName, labelValue)
+	}
+
 	return &crs.Items[0], nil
 }
 
@@ -228,17 +231,30 @@ func (client *Client) GetUser(email string) (UserResource, error) {
 	return user, nil
 }
 
+func getUserWithPasswordByUsername(username string, dynClient *dynamic.DynamicClient) (UserPasswordResource, error) {
+	crs, _ := getCRsForGroupKind("iam-backbone.org", "backboneuser", dynClient)
+	for _, cr := range crs.Items {
+		specData, _ := json.Marshal(cr.Object["spec"])
+		var userWithPassword UserPasswordResource
+		_ = json.Unmarshal(specData, &userWithPassword)
+		if userWithPassword.Email == username {
+			return userWithPassword, nil
+		}
+	}
+
+	return UserPasswordResource{}, errors.New("user not found")
+}
+
 func (client *Client) AssertPassword(username string, password string) bool {
 	logger := misc.GetLogger()
-	username = strings.Replace(username, "@", "__at__", 1)
-	userCR, _ := getCRForGroupKindWithLabel("iam-backbone.org", "backboneuser", "email", username, client.k8sDynClient)
-	specData, _ := json.Marshal(userCR.Object["spec"])
-	var userWithPassword UserPasswordResource
-	_ = json.Unmarshal(specData, &userWithPassword)
+	userWithPassword, err := getUserWithPasswordByUsername(username, client.k8sDynClient)
+	if err != nil {
+		logger.Warnf("could not get user by username: %s", err.Error())
+		return false
+	}
 
-	//
 	secretCR, _ := getCRForGroupKind("", "secret", userWithPassword.SecretRef, client.k8sDynClient)
-	specData, _ = json.Marshal(secretCR.Object["data"])
+	specData, _ := json.Marshal(secretCR.Object["data"])
 	var k8sPw SecretResource
 	_ = json.Unmarshal(specData, &k8sPw)
 
@@ -305,15 +321,13 @@ func (c *Client) ConfigWithWatcher(gcfg *config.Config, wg *sync.WaitGroup) {
 
 	go func() {
 		for {
-			select {
-			case event, ok := <-watcher.ResultChan():
-				if !ok {
-					logger.Info("Watcher channel closed")
-					return
-				}
-				logger.Infof("event received: %+v", event)
-				eventHandler(event.Object)
+			event, ok := <-watcher.ResultChan()
+			if !ok {
+				logger.Info("Watcher channel closed")
+				return
 			}
+			logger.Infof("event received: %+v", event)
+			eventHandler(event.Object)
 		}
 	}()
 }
