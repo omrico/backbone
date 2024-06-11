@@ -16,8 +16,13 @@ type RoleResource struct {
 	Permissions []string `json:"permissions"`
 }
 
-type SecretResource struct {
+type SecretPasswordResource struct {
 	Password string
+}
+
+type SecretJwtKeysResource struct {
+	PrivateKey string `json:"private.key"`
+	PublicKey  string `json:"public.key"`
 }
 
 type RoleBindingResource struct {
@@ -33,4 +38,15 @@ type ConfigResource struct {
 	Mode                string
 	SyncIntervalSeconds int
 	CookieStoreKeyRef   string
+	Oidc                struct {
+		EncryptionKeyRef  string // authz code flow state enc
+		JwtSigningKeysRef string // token sign
+		Providers         []struct {
+			ProviderName    string
+			ProviderType    string
+			ProviderUrl     string
+			ClientID        string `json:"clientId"`
+			ClientSecretRef string
+		}
+	}
 }

@@ -255,7 +255,7 @@ func (client *Client) AssertPassword(username string, password string) bool {
 
 	secretCR, _ := getCRForGroupKind("", "secret", userWithPassword.SecretRef, client.k8sDynClient)
 	specData, _ := json.Marshal(secretCR.Object["data"])
-	var k8sPw SecretResource
+	var k8sPw SecretPasswordResource
 	_ = json.Unmarshal(specData, &k8sPw)
 
 	pw, err := base64.StdEncoding.DecodeString(k8sPw.Password)
@@ -272,6 +272,67 @@ func (client *Client) GetUserRoles(email string) ([]RoleResource, error) {
 		return []RoleResource{}, errors.New("user not found")
 	}
 	return roles, nil
+}
+
+// fetchSecretFromRef Abstracts fetching and rendering a secret for a given string ref
+func (c *Client) fetchSecretFromRef(secretRef string) (string, error) {
+	logger := misc.GetLogger()
+	secretCR, err := getCRForGroupKind("", "secret", secretRef, c.k8sDynClient)
+	if err != nil {
+		logger.Errorf("failed fetching secret resource for %s: %s", secretRef, err.Error())
+		return "", errors.New("failed fetching secret resource")
+	}
+	specData, err := json.Marshal(secretCR.Object["data"])
+	if err != nil {
+		logger.Errorf("failed marshalling secret for %s: %s", secretRef, err.Error())
+		return "", errors.New("failed marshalling secret")
+	}
+	var k8sPw SecretPasswordResource
+	err = json.Unmarshal(specData, &k8sPw)
+	if err != nil {
+		logger.Errorf("failed unmarshalling secret for %s: %s", secretRef, err.Error())
+		return "", errors.New("failed unmarshalling secret")
+	}
+	secret, err := base64.StdEncoding.DecodeString(k8sPw.Password)
+	if err != nil {
+		logger.Errorf("failed decoding secret for %s: %s", secretRef, err.Error())
+		return "", errors.New("failed decoding secret")
+	}
+	return string(secret), nil
+}
+
+// fetchJwtKeysSecretFromRef fetches and renders the pub/private JWT keys
+func (c *Client) fetchJwtKeysSecretFromRef(secretRef string) (string, string, error) {
+	logger := misc.GetLogger()
+	secretCR, err := getCRForGroupKind("", "secret", secretRef, c.k8sDynClient)
+	if err != nil {
+		logger.Errorf("failed fetching secret resource for %s: %s", secretRef, err.Error())
+		return "", "", errors.New("failed fetching jwt keys secret resource")
+	}
+	specData, err := json.Marshal(secretCR.Object["data"])
+	if err != nil {
+		logger.Errorf("failed marshalling jwt keys secret for %s: %s", secretRef, err.Error())
+		return "", "", errors.New("failed marshalling jwt kets secret")
+	}
+	var k8sPw SecretJwtKeysResource
+	err = json.Unmarshal(specData, &k8sPw)
+	if err != nil {
+		logger.Errorf("failed unmarshalling jwt keys secret for %s: %s", secretRef, err.Error())
+		return "", "", errors.New("failed unmarshalling jwt keys secret")
+	}
+	publicKey, err := base64.StdEncoding.DecodeString(k8sPw.PublicKey)
+	if err != nil {
+		logger.Errorf("failed decoding public key secret for %s: %s", secretRef, err.Error())
+		return "", "", errors.New("failed decoding public key secret")
+	}
+
+	privateKey, err := base64.StdEncoding.DecodeString(k8sPw.PrivateKey)
+	if err != nil {
+		logger.Errorf("failed decoding private key secret for %s: %s", secretRef, err.Error())
+		return "", "", errors.New("failed decoding private key secret")
+	}
+
+	return string(privateKey), string(publicKey), nil
 }
 
 func (c *Client) ConfigWithWatcher(gcfg *config.Config, wg *sync.WaitGroup) {
@@ -305,8 +366,46 @@ func (c *Client) ConfigWithWatcher(gcfg *config.Config, wg *sync.WaitGroup) {
 		gcfg.Mode = cfg.Mode
 		gcfg.SyncInterval = cfg.SyncIntervalSeconds
 
-		// TODO - resolve the key ref and get the actual secret
-		gcfg.CookieStoreKey = cfg.CookieStoreKeyRef
+		if gcfg.Mode == "SESSIONS" {
+			gcfg.CookieStoreKey, err = c.fetchSecretFromRef(cfg.CookieStoreKeyRef)
+		}
+
+		if gcfg.Mode == "OIDC_BROKER" {
+			var providerSlice []config.ProviderConfig
+			for _, prov := range cfg.Oidc.Providers {
+				clientSecret, err := c.fetchSecretFromRef(prov.ClientSecretRef)
+				if err != nil {
+					logger.Warnf("cannot fetch oidc client secret from config, skipping provider %s", prov.ProviderName)
+					continue
+				}
+				providerConfig := config.ProviderConfig{
+					ProviderName: prov.ProviderName,
+					ProviderType: prov.ProviderType,
+					ProviderUrl:  prov.ProviderUrl,
+					ClientID:     prov.ClientID,
+					ClientSecret: clientSecret,
+				}
+				providerSlice = append(providerSlice, providerConfig)
+			}
+
+			encKey, err := c.fetchSecretFromRef(cfg.Oidc.EncryptionKeyRef)
+			if err != nil {
+				logger.Error("cannot fetch oidc enc key from config")
+				return
+			}
+
+			privateKey, publicKey, err := c.fetchJwtKeysSecretFromRef(cfg.Oidc.JwtSigningKeysRef)
+			if err != nil {
+				logger.Errorf("failed getting private and public keys: %s", err)
+				return
+			}
+			gcfg.Oidc = config.OidcConfig{
+				EncryptionKey: encKey,
+				PublicKey:     publicKey,
+				PrivateKey:    privateKey,
+				Providers:     providerSlice,
+			}
+		}
 
 		// signal that the config is ready on boot
 		if firstRun {

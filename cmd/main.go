@@ -1,13 +1,12 @@
 package main
 
 import (
-	"net/http"
 	"sync"
 
-	"github.com/omrico/backbone/internal/auth"
 	"github.com/omrico/backbone/internal/config"
 	"github.com/omrico/backbone/internal/k8s"
 	logging "github.com/omrico/backbone/internal/misc"
+	oidcbroker "github.com/omrico/backbone/internal/oidc-broker"
 	"github.com/omrico/backbone/internal/sessions"
 
 	"github.com/gin-gonic/gin"
@@ -34,8 +33,11 @@ func main() {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
+	// read the Backbone Config CR and load it to memory.
+	// Also define the handler for Config changes event
 	c.ConfigWithWatcher(cfg, &wg)
 
+	// start the timed sync every X seconds
 	c.StartSync(&wg)
 
 	// middlewares and handlers
@@ -51,22 +53,23 @@ func main() {
 		c.Next()
 	})
 
-	sm := sessions.SessionManager{SyncClient: c, Cfg: cfg}
-	sm.Init(r, &wg)
+	var sm sessions.SessionManager
+	var om oidcbroker.OidcBrokerManager
 
-	r.GET("/main/ping", sm.SessionMiddleware(), func(c *gin.Context) {
-		userAuth, err := auth.BuildAuthFromCtx(c)
-		if err != nil {
-			logger.Warnf("failed extracting roles from cookie: %s", err.Error())
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"username": userAuth.Username,
-			"roles":    userAuth.RolesAndPerms,
-		})
-	})
+	switch cfg.Mode {
+	case "SESSIONS":
+		sm = sessions.SessionManager{SyncClient: c, Cfg: cfg}
+		sm.Init(r, &wg)
+	case "OIDC_BROKER":
+		om = oidcbroker.OidcBrokerManager{SyncClient: c, Cfg: cfg}
+		om.Init(r, &wg)
+	}
 
 	logger.Info("Initializing... done")
-	//user.AddHandlers(r)
 
-	r.Run() // listen and serve on 0.0.0.0:8080 (for windows "localhost:8080")
+	// start the server
+	err := r.Run()
+	if err != nil {
+		logger.Fatalf("failed starting app: %s", err.Error())
+	}
 }
